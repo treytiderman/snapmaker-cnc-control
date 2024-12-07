@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snapmaker CNC Control</title>
+    <style>
+        * {
+            margin: 0;
+            font: inherit;
+            box-sizing: border-box;
+        }
+
+        html {
+            width: 100%;
+            font-size: 16px;
+            font-family: monospace;
+            color-scheme: light dark;
+        }
+
+        body {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Select Serial Port -->
+    <div>
+        <button onclick="initSerial()">Select Serial Port</button>
+        <span id="serialStatus">not connected</span>
+        <script>
+            let baudRate = 115200
+            let reader = undefined
+            let writer = undefined
+            let encoder = new TextEncoder()
+            let decoder = new TextDecoder()
+            const serialStatus = document.getElementById("serialStatus")
+            async function initSerial() {
+                if ('serial' in navigator) {
+                    try {
+                        const port = await navigator.serial.requestPort()
+                        await port.open({ baudRate: baudRate })
+                        reader = port.readable.getReader()
+                        writer = port.writable.getWriter()
+                        await writeStringToSerial("G91")
+                        serialStatus.innerText = "connected"
+                    }
+                    catch (err) {
+                        console.error('There was an error opening the serial port', err)
+                        serialStatus.innerText = "error"
+                    }
+                }
+                else {
+                    console.error("Web serial is not enabled in your browser")
+                }
+            }
+            async function writeStringToSerial(string) {
+                const encoder = new TextEncoder();
+                const uint8Array = encoder.encode(string + "\r\n");
+                console.log("serial write:", string + "\\r\\n")
+                try {
+                    await writer.write(uint8Array)
+                } catch (error) {
+                    serialStatus.innerText = "error sending"
+                }
+            }
+            async function readStringFromSerial(string) {
+                // TODO
+            }
+        </script>
+    </div>
+
+    <!-- Send Data -->
+    <div>
+        <input type="text" id="textInput" placeholder="ascii...">
+        <button id="textSend">Send</button>
+        <script>
+            const textInput = document.getElementById("textInput")
+            const textSend = document.getElementById("textSend")
+            textSend.addEventListener("click", async (event) => {
+                const text = textInput.value
+                await writeStringToSerial(textInput.value)
+            })
+        </script>
+    </div>
+
+    <br>
+
+    <!-- X Params -->
+    <div>
+        <div id="commandX" style="line-height: 2;"></div>
+        <input type="number" id="inFX" placeholder="X Rate (mm/min)">
+        <input type="number" id="inXX" placeholder="X Step (mm)">
+        <input type="number" id="inXR" placeholder="X Repeat (sec)">
+        <script>
+            let xInterval
+            let xRepeat = 1
+            let xCommand = ""
+            let xCommandNegative = ""
+            const inFX = document.getElementById("inFX")
+            const inXX = document.getElementById("inXX")
+            const inXR = document.getElementById("inXR")
+            const nudgeX = document.getElementById("nudgeX")
+            const commandX = document.getElementById("commandX")
+            if (localStorage.getItem("inFX")) inFX.value = localStorage.getItem("inFX")
+            if (localStorage.getItem("inXX")) inXX.value = localStorage.getItem("inXX")
+            if (localStorage.getItem("inXR")) inXR.value = localStorage.getItem("inXR")
+            calcCommandX()
+            inFX.addEventListener("input", (event) => {
+                localStorage.setItem("inFX", inFX.value)
+                calcCommandX()
+            })
+            inXX.addEventListener("input", (event) => {
+                localStorage.setItem("inXX", inXX.value)
+                calcCommandX()
+            })
+            inXR.addEventListener("input", (event) => {
+                localStorage.setItem("inXR", inXR.value)
+                calcCommandX()
+            })
+            function calcCommandX() {
+                xRepeat = Math.abs(inXX.value / inFX.value) * 60
+                const fx = inFX.value ? "F" + inFX.value : "F0"
+                const xx = inXX.value ? "X" + inXX.value : "X0"
+                const xr = inXR.value ? inXR.value : xRepeat
+                xCommand = `G0 ${fx} ${xx}`
+                const xxn = inXX.value ? "X-" + inXX.value : "X0"
+                xCommandNegative = `G0 ${fx} ${xxn}`
+                commandX.innerText = `Command: "${xCommand}" every ${xr} (sec) | auto repeat ${xRepeat} (sec)`
+            }
+        </script>
+    </div>
+
+    <!-- Y Params -->
+    <div>
+        <div id="commandY" style="line-height: 2;"></div>
+        <input type="number" id="inFY" placeholder="Y Rate (mm/min)">
+        <input type="number" id="inYY" placeholder="Y Step (mm)">
+        <input type="number" id="inYR" placeholder="Y Repeat (sec)">
+        <script>
+            let yInterval
+            let yRepeat = 1
+            let yCommand = ""
+            let yCommandNegative = ""
+            const inFY = document.getElementById("inFY")
+            const inYY = document.getElementById("inYY")
+            const inYR = document.getElementById("inYR")
+            const commandY = document.getElementById("commandY")
+            if (localStorage.getItem("inFY")) inFY.value = localStorage.getItem("inFY")
+            if (localStorage.getItem("inYY")) inYY.value = localStorage.getItem("inYY")
+            if (localStorage.getItem("inYR")) inYR.value = localStorage.getItem("inYR")
+            calcCommandY()
+            inFY.addEventListener("input", (event) => {
+                localStorage.setItem("inFY", inFY.value)
+                calcCommandY()
+            })
+            inYY.addEventListener("input", (event) => {
+                localStorage.setItem("inYY", inYY.value)
+                calcCommandY()
+            })
+            inYR.addEventListener("input", (event) => {
+                localStorage.setItem("inYR", inYR.value)
+                calcCommandY()
+            })
+            function calcCommandY() {
+                yRepeat = Math.abs(inYY.value / inFY.value) * 60
+                const fy = inFY.value ? "F" + inFY.value : "F0"
+                const yy = inYY.value ? "Y" + inYY.value : "Y0"
+                const yr = inYR.value ? inYR.value : yRepeat
+                yCommand = `G0 ${fy} ${yy}`
+                const yyn = inYY.value ? "Y-" + inYY.value : "Y0"
+                yCommandNegative = `G0 ${fy} ${yyn}`
+                commandY.innerText = `Command: "${yCommand}" every ${yr} (sec) | auto repeat ${yRepeat} (sec)`
+            }
+        </script>
+    </div>
+
+    <!-- Z Params -->
+    <div>
+        <div id="commandZ" style="line-height: 2;"></div>
+        <input type="number" id="inFZ" placeholder="Z Rate (mm/min)">
+        <input type="number" id="inZZ" placeholder="Z Step (mm)">
+        <input type="number" id="inZR" placeholder="Z Repeat (sec)">
+        <script>
+            let zInterval
+            let zRepeat = 1
+            let zCommand = ""
+            let zCommandNegative = ""
+            const inFZ = document.getElementById("inFZ")
+            const inZZ = document.getElementById("inZZ")
+            const inZR = document.getElementById("inZR")
+            const nudgeZ = document.getElementById("nudgeZ")
+            const commandZ = document.getElementById("commandZ")
+            if (localStorage.getItem("inFZ")) inFZ.value = localStorage.getItem("inFZ")
+            if (localStorage.getItem("inZZ")) inZZ.value = localStorage.getItem("inZZ")
+            if (localStorage.getItem("inZR")) inZR.value = localStorage.getItem("inZR")
+            calcCommandZ()
+            inFZ.addEventListener("input", (event) => {
+                localStorage.setItem("inFZ", inFZ.value)
+                calcCommandZ()
+            })
+            inZZ.addEventListener("input", (event) => {
+                localStorage.setItem("inZZ", inZZ.value)
+                calcCommandZ()
+            })
+            inZR.addEventListener("input", (event) => {
+                localStorage.setItem("inZR", inZR.value)
+                calcCommandZ()
+            })
+            function calcCommandZ() {
+                zRepeat = Math.abs(inZZ.value / inFZ.value) * 60
+                const fz = inFZ.value ? "F" + inFZ.value : "F0"
+                const zz = inZZ.value ? "Z" + inZZ.value : "Z0"
+                const zr = inZR.value ? inZR.value : zRepeat
+                zCommand = `G0 ${fz} ${zz}`
+                const zzn = inZZ.value ? "Z-" + inZZ.value : "Z0"
+                zCommandNegative = `G0 ${fz} ${zzn}`
+                commandZ.innerText = `Command: "${zCommand}" every ${zr} (sec) | auto repeat ${zRepeat} (sec)`
+            }
+        </script>
+    </div>
+    <br>
+
+    <!-- dPad -->
+    <div id="dPad">
+        <style>
+            #dPad {
+                display: grid;
+                gap: 0.25rem;
+            }
+            #dPad div {
+                display: flex;
+                gap: 0.25rem;
+            }
+            #dPad div button {
+                width: 4rem;
+                height: 3rem;
+                display: block;
+            }
+            #dPad div div {
+                width: 4rem;
+                height: 3rem;
+            }
+        </style>
+        <div>
+            <div></div>
+            <button id="btnYp">Y+</button>
+            <div></div>
+            <div></div>
+            <button id="btnZp">Z+</button>
+        </div>
+        <div>
+            <button id="btnXn">X-</button>
+            <div></div>
+            <button id="btnXp">X+</button>
+        </div>
+        <div>
+            <div></div>
+            <button id="btnYn">Y-</button>
+            <div></div>
+            <div></div>
+            <button id="btnZn">Z-</button>
+        </div>
+        <script>
+            const btnXp = document.getElementById("btnXp")
+            const btnXn = document.getElementById("btnXn")
+            btnXp.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(xCommand)
+                commandX.innerText += "."
+                xInterval = setInterval(async () => {
+                    await writeStringToSerial(xCommand)
+                    commandX.innerText += "."
+                }, xRepeat * 1000);
+            })
+            btnXp.addEventListener("pointerup", (event) => {
+                calcCommandX()
+                clearInterval(xInterval)
+            })
+            btnXn.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(xCommandNegative)
+                commandX.innerText += "."
+                xInterval = setInterval(async () => {
+                    await writeStringToSerial(xCommandNegative)
+                    commandX.innerText += "."
+                }, xRepeat * 1000);
+            })
+            btnXn.addEventListener("pointerup", (event) => {
+                calcCommandX()
+                clearInterval(xInterval)
+            })
+
+            const btnYp = document.getElementById("btnYp")
+            const btnYn = document.getElementById("btnYn")
+            btnYp.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(yCommand)
+                commandY.innerText += "."
+                yInterval = setInterval(async () => {
+                    await writeStringToSerial(yCommand)
+                    commandY.innerText += "."
+                }, yRepeat * 1000);
+            })
+            btnYp.addEventListener("pointerup", (event) => {
+                calcCommandY()
+                clearInterval(yInterval)
+            })
+            btnYn.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(yCommandNegative)
+                commandY.innerText += "."
+                yInterval = setInterval(async () => {
+                    await writeStringToSerial(yCommandNegative)
+                    commandY.innerText += "."
+                }, yRepeat * 1000);
+            })
+            btnYn.addEventListener("pointerup", (event) => {
+                calcCommandY()
+                clearInterval(yInterval)
+            })
+
+            const btnZp = document.getElementById("btnZp")
+            const btnZn = document.getElementById("btnZn")
+            btnZp.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(zCommand)
+                commandZ.innerText += "."
+                zInterval = setInterval(async () => {
+                    await writeStringToSerial(zCommand)
+                    commandZ.innerText += "."
+                }, zRepeat * 1000);
+            })
+            btnZp.addEventListener("pointerup", (event) => {
+                calcCommandZ()
+                clearInterval(zInterval)
+            })
+            btnZn.addEventListener("pointerdown", (event) => {
+                writeStringToSerial(zCommandNegative)
+                commandZ.innerText += "."
+                zInterval = setInterval(async () => {
+                    await writeStringToSerial(zCommandNegative)
+                    commandZ.innerText += "."
+                }, zRepeat * 1000);
+            })
+            btnZn.addEventListener("pointerup", (event) => {
+                calcCommandZ()
+                clearInterval(zInterval)
+            })
+        </script>
+    </div>
+    <br>
+
+    <div>
+        <div style="opacity: 0.6;">when using gamepad:</div>
+        <div style="opacity: 0.6; padding-left: 2rem;">use dpad for x/y axis control</div>
+        <div style="opacity: 0.6; padding-left: 2rem;">hold left and right bumpers + dpad up/down for z axis</div>
+    </div>
+
+</body>
+
+<script>
+    const buttons = [
+        {
+            num: 4,
+            name: "bumper-left",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandZ()
+                clearInterval(zInterval)
+            }
+        },
+        {
+            num: 5,
+            name: "bumper-right",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandZ()
+                clearInterval(zInterval)
+            }
+        },
+        {
+            num: 12,
+            name: "up",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+                if (buttons[0].flag && buttons[1].flag) {
+                    writeStringToSerial(zCommand)
+                    commandZ.innerText += "."
+                    clearInterval(zInterval)
+                    zInterval = setInterval(async () => {
+                        await writeStringToSerial(zCommand)
+                        commandZ.innerText += "."
+                    }, zRepeat * 1000);
+                } else {
+                    writeStringToSerial(yCommand)
+                    commandY.innerText += "."
+                    clearInterval(yInterval)
+                    yInterval = setInterval(async () => {
+                        await writeStringToSerial(yCommand)
+                        commandY.innerText += "."
+                    }, yRepeat * 1000);
+                }
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandY()
+                clearInterval(yInterval)
+                calcCommandZ()
+                clearInterval(zInterval)
+            }
+        },
+        {
+            num: 13,
+            name: "down",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+
+                if (buttons[0].flag && buttons[1].flag) {
+                    writeStringToSerial(zCommandNegative)
+                    commandZ.innerText += "."
+                    clearInterval(zInterval)
+                    zInterval = setInterval(async () => {
+                        await writeStringToSerial(zCommandNegative)
+                        commandZ.innerText += "."
+                    }, zRepeat * 1000);
+                } else {
+                    writeStringToSerial(yCommandNegative)
+                    commandY.innerText += "."
+                    clearInterval(yInterval)
+                    yInterval = setInterval(async () => {
+                        await writeStringToSerial(yCommandNegative)
+                        commandY.innerText += "."
+                    }, yRepeat * 1000);
+                }
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandY()
+                clearInterval(yInterval)
+                calcCommandZ()
+                clearInterval(zInterval)
+            }
+        },
+        {
+            num: 15,
+            name: "right",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+                writeStringToSerial(xCommand)
+                commandX.innerText += "."
+                clearInterval(xInterval)
+                xInterval = setInterval(async () => {
+                    await writeStringToSerial(xCommand)
+                    commandX.innerText += "."
+                }, xRepeat * 1000);
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandX()
+                clearInterval(xInterval)
+            }
+        },
+        {
+            num: 14,
+            name: "left",
+            flag: false,
+            pressed: function () {
+                this.flag = true
+                console.log("button", this.name, "press")
+                writeStringToSerial(xCommandNegative)
+                commandX.innerText += "."
+                clearInterval(xInterval)
+                xInterval = setInterval(async () => {
+                    await writeStringToSerial(xCommandNegative)
+                    commandX.innerText += "."
+                }, xRepeat * 1000);
+            },
+            released: function () {
+                this.flag = false
+                console.log("button", this.name, "release")
+                calcCommandX()
+                clearInterval(xInterval)
+            }
+        },
+    ]
+
+    window.addEventListener("gamepadconnected", function (e) {
+
+        for (const gamepad of navigator.getGamepads()) {
+            if (!gamepad) continue;
+            for (const [i, button] of gamepad.buttons.entries()) {
+                if (button.pressed) {
+                    console.log("i:", i, "pressed")
+                } else {
+                    // console.log("i:", i, "nah")
+                }
+            }
+        }
+
+        setInterval(function () {
+            for (const gamepad of navigator.getGamepads()) {
+                if (!gamepad) continue;
+                buttons.forEach((button, i) => {
+                    if (gamepad.buttons[button.num].pressed && !button.flag) {
+                        button.pressed()
+                    }
+                    else if (!gamepad.buttons[button.num].pressed && button.flag) {
+                        button.released()
+                    }
+
+                })
+
+                // Test Buttons
+                // for (const [i, button] of gamepad.buttons.entries()) {
+                //     if (button.pressed) {
+                //         console.log("i:", i, "pressed")
+                //     }
+                // }
+
+                // Test Axis
+                // for (const [i, axis] of gamepad.axes.entries()) {
+                //     if (axis > 0.3 || axis < -0.3) {
+                //         console.log("i:", i, axis)
+                //     }
+                // }
+            }
+        }, 100)
+
+    })
+
+</script>
+
+</html>
